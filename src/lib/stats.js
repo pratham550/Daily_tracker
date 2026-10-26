@@ -196,6 +196,27 @@ export function workoutKcal(session, weightKg) {
   return Math.round(GYM_MET * weightKg * hours);
 }
 
+// Workout length the user enters, in minutes. The live timer only measures how long the
+// logging screen was open, which is often much shorter than the real session.
+export const MAX_WORKOUT_MIN = 360;
+
+export function parseDurationMinutes(hours, minutes) {
+  const h = hours === '' || hours == null ? 0 : Number(hours);
+  const m = minutes === '' || minutes == null ? 0 : Number(minutes);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || m < 0) return null;
+  const total = Math.round(h * 60 + m);
+  return total >= 1 && total <= MAX_WORKOUT_MIN ? total : null;
+}
+
+export function sessionMinutes(session) {
+  return Math.max(1, Math.round((session.end - session.start) / 60000));
+}
+
+// Keeps the end time and moves the start so the session lasts `minutes`
+export function withDuration(session, minutes) {
+  return { ...session, start: session.end - minutes * 60000 };
+}
+
 // The last time an exercise was done, used to pre-fill sets in a new workout
 export function lastSetsFor(sessions, name) {
   const h = exerciseHistory(sessions, name);

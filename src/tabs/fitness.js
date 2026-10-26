@@ -4,6 +4,7 @@ import { formatClock, formatDuration, formatNum, formatKm } from '../lib/format.
 import {
   sessionVolume, sessionSetCount, sessionReps, exerciseHistory, personalRecords, newPrsInSession, isSetPr,
   gymDays, sessionsThisWeek, lastSetsFor, lastNDays, muscleSets, workoutKcal, prLabel, GYM_MET,
+  parseDurationMinutes, sessionMinutes, withDuration, MAX_WORKOUT_MIN,
 } from '../lib/stats.js';
 import { loadLibrary, searchExercises, describe, demo, findByName, stepsHtml, GROUPS, TYPE_LABEL, groupEmoji } from '../lib/exercises.js';
 import { healthStatus, connectHealth, syncSteps, openHealthSettings } from '../lib/health.js';
@@ -325,6 +326,50 @@ function openProgress() {
   });
 }
 
+// Asks how long the workout really was. Resolves to minutes, or null if cancelled.
+function askDuration({ title, minutes, hint, confirm }) {
+  return new Promise((resolve) => {
+    let mins = minutes;
+    let answered = false;
+    const chips = [30, 45, 60, 75, 90, 105, 120, 150];
+    const label = (m) => formatDuration(m * 60);
+    const sheet = openSheet({
+      title,
+      html: `<div class="center big-num" id="dur-show" style="margin:4px 0 14px">${label(mins)}</div>
+        <div class="chips wrap" style="justify-content:center;margin-bottom:14px">${chips.map((c) =>
+          `<button class="chip ${c === mins ? 'on' : ''}" data-min="${c}">${label(c)}</button>`).join('')}</div>
+        <div class="row" style="gap:10px">
+          <label class="field" style="flex:1"><span>Hours</span><input class="input" id="dur-h" inputmode="numeric" value="${Math.floor(mins / 60)}"></label>
+          <label class="field" style="flex:1"><span>Minutes</span><input class="input" id="dur-m" inputmode="numeric" value="${mins % 60}"></label></div>
+        ${hint ? `<p class="hint" style="margin:0 0 14px">${esc(hint)}</p>` : ''}
+        <button class="btn block" data-ok>${esc(confirm)}</button>`,
+      onClose: () => { if (!answered) resolve(null); },
+    });
+    const h = sheet.body.querySelector('#dur-h');
+    const m = sheet.body.querySelector('#dur-m');
+    const show = () => {
+      sheet.body.querySelector('#dur-show').textContent = mins ? label(mins) : '—';
+      sheet.body.querySelectorAll('[data-min]').forEach((c) => c.classList.toggle('on', Number(c.dataset.min) === mins));
+    };
+    sheet.body.addEventListener('input', () => { mins = parseDurationMinutes(h.value, m.value); show(); });
+    sheet.body.addEventListener('click', (e) => {
+      const c = e.target.closest('[data-min]');
+      if (c) {
+        mins = Number(c.dataset.min);
+        h.value = Math.floor(mins / 60);
+        m.value = mins % 60;
+        show();
+        return;
+      }
+      if (!e.target.closest('[data-ok]')) return;
+      if (!mins) { toast(`Please enter a time between 1 minute and ${MAX_WORKOUT_MIN / 60} hours`); return; }
+      answered = true;
+      resolve(mins);
+      sheet.close();
+    });
+  });
+}
+
 async function finishWorkout() {
   const s = getState();
   const a = s.gym.active;
@@ -333,10 +378,18 @@ async function finishWorkout() {
     if (ok) update((st) => { st.gym.active = null; });
     return;
   }
-  const session = {
+  const timerMin = Math.min(MAX_WORKOUT_MIN, Math.max(1, Math.round((Date.now() - a.start) / 60000)));
+  const minutes = await askDuration({
+    title: 'How long did you train?',
+    minutes: timerMin,
+    hint: `The timer ran for ${formatDuration(timerMin * 60)} while you were logging. Change it if your session was longer or shorter.`,
+    confirm: 'Save workout',
+  });
+  if (minutes == null) return; // closed without saving: back to the workout, nothing lost
+  const session = withDuration({
     ...a, end: Date.now(),
     exercises: a.exercises.map((e) => ({ ...e, sets: e.sets.filter((x) => x.done).map(({ pr: _pr, ...x }) => x) })).filter((e) => e.sets.length),
-  };
+  }, minutes);
   const prs = newPrsInSession(s.gym.sessions, session);
   const kcal = workoutKcal(session, s.profile.weightKg);
   update((st) => { st.gym.sessions.push(session); st.gym.active = null; });
@@ -369,8 +422,20 @@ function openSession(id) {
         <div><b>${formatNum(sessionReps(x))}</b><span>reps</span></div></div>
       ${x.exercises.map((e) => `<div class="card tight"><b>${esc(e.name)}</b>
         <div class="muted small">${e.sets.map((p) => fmtSet(e, p)).join(' · ')}</div></div>`).join('')}
-      <button class="btn danger block" data-del>Delete this workout</button>`,
+      <div class="row" style="gap:8px">
+        <button class="btn plain" style="flex:1" data-dur>⏱️ Edit duration</button>
+        <button class="btn danger" style="flex:1" data-del>Delete</button></div>`,
   });
+  sheet.body.querySelector('[data-dur]').onclick = async () => {
+    const minutes = await askDuration({ title: 'Workout duration', minutes: sessionMinutes(x), confirm: 'Save' });
+    if (minutes == null) return;
+    update((s) => {
+      const i = s.gym.sessions.findIndex((ss) => ss.id === id);
+      s.gym.sessions[i] = withDuration(s.gym.sessions[i], minutes);
+    });
+    sheet.close();
+    toast(`Duration set to ${formatDuration(minutes * 60)}`);
+  };
   sheet.body.querySelector('[data-del]').onclick = async () => {
     if (!(await confirmSheet({ title: 'Delete workout?', message: 'This removes the workout and its sets from your history.' }))) return;
     update((s) => { s.gym.sessions = s.gym.sessions.filter((ss) => ss.id !== id); });

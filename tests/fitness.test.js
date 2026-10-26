@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   setScore, personalRecords, newPrsInSession, isSetPr, sessionReps, sessionVolume, muscleSets, workoutKcal,
-  smokeByDay, smokeWeekAvg, smokeLimitFor, lastNDays,
+  smokeByDay, smokeWeekAvg, smokeLimitFor, lastNDays, parseDurationMinutes, sessionMinutes, withDuration,
 } from '../src/lib/stats.js';
 import { addDays, keyToDate } from '../src/lib/dates.js';
 import { defaultState } from '../src/store.js';
@@ -103,5 +103,29 @@ describe('smoking tracker', () => {
     expect(smokeLimitFor(sm, '2027-12-31')).toBe(0);
     expect(smokeLimitFor({ ...sm, stepDown: false }, '2027-12-31')).toBe(10);
     expect(smokeLimitFor({ limit: null }, today)).toBe(null);
+  });
+});
+
+describe('workout duration entered by hand', () => {
+  it('parses hours and minutes, rejecting nonsense', () => {
+    expect(parseDurationMinutes('1', '30')).toBe(90);
+    expect(parseDurationMinutes('1.5', '')).toBe(90);
+    expect(parseDurationMinutes('', '45')).toBe(45);
+    expect(parseDurationMinutes('0', '0')).toBe(null);
+    expect(parseDurationMinutes('-1', '30')).toBe(null);
+    expect(parseDurationMinutes('abc', '10')).toBe(null);
+    expect(parseDurationMinutes('7', '0')).toBe(null); // over 6 hours
+    expect(parseDurationMinutes('6', '0')).toBe(360);
+  });
+
+  it('8 minutes of logging becomes the real 1.5 hour session, and calories follow', () => {
+    const end = Date.parse('2026-10-26T19:30:00');
+    const logged = { date: '2026-10-26', start: end - 8 * 60000, end, exercises: [] };
+    expect(sessionMinutes(logged)).toBe(8);
+    const fixed = withDuration(logged, 90);
+    expect(fixed.end).toBe(end);
+    expect(sessionMinutes(fixed)).toBe(90);
+    expect(workoutKcal(fixed, 70)).toBe(368); // 3.5 x 70 kg x 1.5 h = 367.5
+    expect(workoutKcal(logged, 70)).toBe(33);
   });
 });
