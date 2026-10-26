@@ -2,6 +2,7 @@ import { update, getState } from '../store.js';
 import { THEMES, MODES, applyTheme } from '../themes.js';
 import { esc, icon, toast } from '../ui.js';
 import { searchCity } from '../lib/weather.js';
+import { restoreFromFile } from './settings.js';
 
 let step = 0;
 let cityResults = [];
@@ -17,7 +18,10 @@ export function render(state) {
       Everything stays on this phone.</p>
       <label class="field"><span>What should I call you?</span>
         <input class="input" id="ob-name" placeholder="Your name" value="${esc(state.profile.name)}" autocomplete="given-name" data-enter="next"></label>
-      <button class="btn block" data-act="next">Continue ${icon('right', 'width="20" height="20"')}</button>`;
+      <button class="btn block" data-act="next">Continue ${icon('right', 'width="20" height="20"')}</button>
+      <label class="btn plain block" style="margin-top:10px">♻️ Reinstalling? Restore from a backup
+        <input type="file" accept="application/json,.json" data-restore hidden></label>
+      <p class="hint">Pick the latest file from Documents/DailyHub, or a backup you saved to Google Drive.</p>`;
   } else if (step === 1) {
     body = `<h1 class="center" style="margin:0 0 6px">Pick your look</h1>
       <p class="center muted" style="margin:0 0 20px">Tap a theme to try it. You can change it any time in Settings.</p>
@@ -46,6 +50,13 @@ export function render(state) {
 function saveName() {
   const el = document.getElementById('ob-name');
   if (el) update((s) => { s.profile.name = el.value.trim(); }, { silent: true });
+}
+
+export async function onChange(e) {
+  if (!e.target.matches('[data-restore]')) return;
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (await restoreFromFile(file)) step = 0;
 }
 
 export const actions = {

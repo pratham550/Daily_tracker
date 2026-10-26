@@ -5,6 +5,7 @@ import { SVG_DEFS, icon, animateIn, closeTopSheet, enableSwipe, toast } from './
 import { isNative, tap } from './lib/platform.js';
 import { setupNotifications, syncReminders } from './lib/reminders.js';
 import { fetchWeather } from './lib/weather.js';
+import { runAutoBackup } from './lib/autobackup.js';
 import * as home from './tabs/home.js';
 import * as diet from './tabs/diet.js';
 import * as fitness from './tabs/fitness.js';
@@ -141,7 +142,14 @@ async function refreshWeather(force = false) {
   }
 }
 
+async function autoBackup() {
+  if (!getState().setupDone) return;
+  const day = await runAutoBackup(getState());
+  if (day) update((s) => { s.settings.lastAutoBackupDay = day; }, { silent: true });
+}
+
 async function onResume() {
+  autoBackup();
   refreshWeather();
   fitness.autoSyncSteps?.(ctx);
   queueRender();
@@ -166,7 +174,7 @@ async function start() {
       App.minimizeApp();
     });
     App.addListener('resume', onResume);
-    App.addListener('pause', () => saveNow());
+    App.addListener('pause', () => { saveNow(); autoBackup(); });
   }
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) saveNow(); else if (!isNative()) onResume();

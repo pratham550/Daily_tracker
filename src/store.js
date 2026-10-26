@@ -35,6 +35,8 @@ export function defaultState() {
         bills: { on: true },
       },
       lastBackupAt: null,
+      autoBackup: true,
+      lastAutoBackupDay: null,
     },
     todos: [],
     notes: [],

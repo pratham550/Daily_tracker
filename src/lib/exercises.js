@@ -46,7 +46,7 @@ export function findById(id) {
   return lib?.byId.get(id) || null;
 }
 
-export function searchExercises(q, group = null, limit = 60) {
+export function searchExercises(q, group = null, limit = 60) { // limit Infinity to count
   if (!lib) return [];
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   return lib

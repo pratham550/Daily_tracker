@@ -34,7 +34,7 @@ No account, no ads, no server. Everything stays on your phone.
 |---|---|
 | 🏠 **Home** | Greeting, weather for your city, today at a glance (steps, calories, spends, gym days), habit chips, to-do list, focus timer and notes. |
 | 🥗 **Diet** | Log meals from 327 pure-veg Indian foods (search in English or Hindi: *rajma, atta, chawal, badam*). See calories, protein, carbs and fat against your goal. Track water. Get pure-veg meal ideas sized to what is left of your day. |
-| 🏋️ **Fitness → Gym** | Start a workout from a plan (Push, Pull, Legs and more) or pick from 873 exercises grouped by muscle: Chest, Back, Biceps, Triceps, Shoulders, Legs, Abs. Each exercise has a moving demo. Log kg × reps, reps only (push-ups, pull-ups) or seconds (plank). Rest timer, new-PR celebration, sets per muscle each week, calories burned. |
+| 🏋️ **Fitness → Gym** | Start a workout from a plan (Push, Pull, Legs and more) or pick from 873 exercises grouped by muscle: Chest, Back, Biceps, Triceps, Shoulders, Legs, Abs, and search inside a group. Each exercise has a moving demo. Log kg × reps, reps only (push-ups, pull-ups) or seconds (plank). Rest timer, new-PR celebration, your real workout time, calories worked out per exercise and per set, sets per muscle each week. |
 | 👟 **Fitness → Steps** | Reads your steps, distance and active calories from Health Connect. Daily ring, 7-day chart, streaks. |
 | ⚖️ **Fitness → Body** | Weight log with a trend line and BMI. |
 | 💰 **Money** | Log spends in Rs, monthly budget, category split, day-by-day chart, monthly bill reminders, export to Excel (CSV). |
@@ -93,9 +93,18 @@ You need an Android phone with **Android 8.0 or newer**. Steps work best on Andr
 
 See [Build it yourself](#build-it-yourself-for-developers). It takes about 15 minutes the first time, mostly downloads.
 
-### Updating to a newer version
+### Updating to a newer version (your data stays)
 
-Install the new APK over the old one. Your data stays. If Android refuses because the signature is different, take a backup first (Settings → Backup), uninstall, install the new APK and restore the backup.
+**Do not uninstall.** Open the new APK and tap **Update**. Android keeps all your data when a new version is installed over the old one.
+
+This works as long as both APKs were signed with the same key. APKs built on the same computer use the same debug key (`.android/debug.keystore` in your user folder), so keep a copy of that file if you build on another computer later.
+
+### If you have to uninstall or move to a new phone
+
+1. Daily Hub saves a copy of everything every day to **Documents/DailyHub** on the phone (Settings → Backup → *Daily auto backup*, on by default). These files are **not** deleted when the app is uninstalled.
+2. For extra safety, also use Settings → Backup → **Save backup** and keep the file on Google Drive.
+3. After installing again, the first screen has **♻️ Reinstalling? Restore from a backup**. Pick the newest `DailyHub_auto_YYYYMMDD.json` from Documents/DailyHub, or your Drive backup. Everything comes back, including theme and settings.
+4. Android's own Google backup may also bring the data back by itself after a reinstall, if *Backup by Google One* is on in the phone's settings. Do not rely on this alone.
 
 ---
 
@@ -148,9 +157,12 @@ Tick these off once. Each one takes under a minute.
 2. For each set, type kg and reps (or reps only, or seconds, depending on the exercise) and tap the ✓ circle.
 3. Ticking a set starts the **rest timer**. You get a notification when rest is over.
 4. Beat your best for an exercise and you get a 🏆 **NEW PR** celebration on the spot.
-5. Tap **Finish workout** to save. You see time, sets, reps, calories and any new records.
+5. Tap **Finish workout**. The app asks **How long did you train?** It fills in the time the logging screen was open, but you can pick 45 min, 1 h 30 and so on, or type hours and minutes. Logging at the end of a 1.5 hour session takes a few minutes, so always set the real time here.
+6. You then see time, sets, reps, calories (with a per-exercise breakdown) and any new records.
 
-- **📚 Exercises:** browse 873 exercises by muscle group. Tap the picture to see the moving demo and step-by-step instructions.
+- **Wrong time on an old workout?** 📈 Progress → tap the workout → **⏱️ Edit duration**.
+
+- **📚 Exercises:** browse 873 exercises by muscle group. Pick a group (say Chest) and type in the search box to search only inside that group, for example *incline*. The search bar stays at the top while you scroll. Tap the picture to see the moving demo and step-by-step instructions.
 - **📈 Progress:** 12-week calendar, all personal records and full workout history.
 - **✏️ Plans:** edit the plans or make your own, one exercise per line.
 - Sets are pre-filled with what you did last time, so usually you only adjust and tick.
@@ -193,7 +205,7 @@ Tick these off once. Each one takes under a minute.
 
 ## Backup and moving to a new phone
 
-All data lives on the phone. To keep it safe:
+All data lives on the phone. Daily Hub also saves a copy every day to **Documents/DailyHub** (kept even if the app is uninstalled; see [If you have to uninstall](#if-you-have-to-uninstall-or-move-to-a-new-phone)). To be safe even if the phone is lost:
 
 1. **Settings → Backup → Save backup.** Android's share sheet opens. Save the file to Google Drive, or send it to yourself on WhatsApp.
 2. The file is named like `DailyHub_backup_20261026.json`.
@@ -332,7 +344,7 @@ Daily_tracker/
 | Food nutrition (327 veg foods, per 100 g) | **Indian Food Composition Tables 2017**, National Institute of Nutrition, Hyderabad, via the [`ifct2017`](https://www.npmjs.com/package/ifct2017) npm package | The package is AGPL-3.0. Only its data is used; `scripts/build-foods.mjs` filters out egg, meat and fish groups and converts kJ to kcal. Tests check that every food's energy agrees with its protein, fat and carbs. |
 | Exercises (873, with photos and steps) | [free-exercise-db](https://github.com/yuhonas/free-exercise-db) | Public domain (Unlicense). Photos load from jsDelivr when you open them. |
 | Daily calorie target | Mifflin-St Jeor equation with an activity factor | An estimate, not medical advice. |
-| Gym calories | [Compendium of Physical Activities](https://pacompendium.com/conditioning-exercise), code 02054, resistance training 8-15 reps = **3.5 METs** | kcal = 3.5 × body weight (kg) × hours. |
+| Gym calories | [Compendium of Physical Activities](https://pacompendium.com/conditioning-exercise), conditioning exercise codes 02020, 02022, 02024, 02050, 02052, 02054, 02101 | Worked out per set. See the FAQ below. |
 | Weather | [Open-Meteo](https://open-meteo.com/) | Free, no key. |
 | Steps | Android Health Connect | Read only. |
 | Quitline number | National Tobacco Quitline Services, Ministry of Health and Family Welfare | 1800-11-2356 |
@@ -369,9 +381,30 @@ They are not in the Indian Food Composition Tables 2017. Add them once under + A
 </details>
 
 <details>
+<summary><b>How are gym calories worked out?</b></summary>
+
+1. Your real workout time (the one you confirm when finishing) is shared equally across the sets you ticked. Each share covers the set and its rest.
+2. Each set gets a MET value from the Compendium of Physical Activities for that kind of exercise:
+
+   | Exercise | Normal set | Hard set |
+   |---|---|---|
+   | Weight training, general | 3.5 (code 02054) | 6.0 (02050) |
+   | Squats and deadlifts | 5.0 (02052) | 6.0 (02050) |
+   | Bodyweight: push-ups, pull-ups, lunges | 3.8 (02022) | 7.5 (02020) |
+   | Abs: crunches, plank | 2.8 (02024) | 2.8 |
+   | Stretching | 2.3 (02101) | 2.3 |
+
+3. **Weight and reps decide if a set is hard.** The set is compared with your best on that exercise (estimated 1RM from kg × reps, or best reps, or longest hold). At 85% of your best or more, it counts as hard. A light warm-up counts as normal. The 85% cut-off is this app's own choice; the Compendium only gives effort levels.
+4. Calories for a set = MET × your body weight (kg) × hours for that set. The summary shows the total and the split by exercise.
+5. Cardio machines (treadmill, cycle and so on) are not counted here, because their values depend on speed, which the app does not record. Your phone's active calories in Health Connect already include that movement.
+
+Example: 1 h 30 m, 2 squat sets, 70 kg. The 60 kg × 10 warm-up counts as normal (5.0), the 100 kg × 6 top set counts as hard (6.0). Calories = 70 × 0.75 × (5.0 + 6.0) = about 578 kcal.
+</details>
+
+<details>
 <summary><b>How accurate are the calories?</b></summary>
 
-Food values are lab values from IFCT 2017 for the raw food. Your actual cooking (oil, water lost) changes things, so treat totals as a good guide, not an exact count. The calorie target and gym burn are standard estimates.
+Food values are lab values from IFCT 2017 for the raw food. Your actual cooking (oil, water lost) changes things, so treat totals as a good guide, not an exact count. The calorie target and gym burn are standard estimates; gym burn depends a lot on how much you rest, which is why the real workout time matters.
 </details>
 
 <details>
@@ -385,6 +418,7 @@ Uninstall the app, or Android Settings → Apps → Daily Hub → Storage → Cl
 ## Known limits
 
 - No sync between devices. Use backup and restore to move data.
+- The daily auto backup and the restore-after-reinstall flow have been checked in the browser and in unit tests, but not yet on a real phone.
 - Health Connect lets an app read about the last 30 days when it first connects. After that, Daily Hub keeps its own copy, so history keeps growing.
 - Bill due days are limited to 1 to 28, so every month has that date.
 - The APK built with the steps above is a **debug build**. It is fine for personal use but cannot go on the Play Store as it is.

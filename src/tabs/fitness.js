@@ -3,7 +3,8 @@ import { dateKey, addDays, fmtDay, startOfWeek, monthKey, weekdayShort } from '.
 import { formatClock, formatDuration, formatNum, formatKm } from '../lib/format.js';
 import {
   sessionVolume, sessionSetCount, sessionReps, exerciseHistory, personalRecords, newPrsInSession, isSetPr,
-  gymDays, sessionsThisWeek, lastSetsFor, lastNDays, muscleSets, workoutKcal, prLabel, GYM_MET,
+  gymDays, sessionsThisWeek, lastSetsFor, lastNDays, muscleSets, workoutKcal, workoutKcalDetail, prLabel,
+  parseDurationMinutes, sessionMinutes, withDuration, MAX_WORKOUT_MIN, HARD_SHARE,
 } from '../lib/stats.js';
 import { loadLibrary, searchExercises, describe, demo, findByName, stepsHtml, GROUPS, TYPE_LABEL, groupEmoji } from '../lib/exercises.js';
 import { healthStatus, connectHealth, syncSteps, openHealthSettings } from '../lib/health.js';
@@ -48,7 +49,7 @@ function renderGym(s) {
   const target = s.settings.gymWeeklyTarget;
   const wk = startOfWeek(today);
   const weekSessions = s.gym.sessions.filter((x) => x.date >= wk && x.date <= today);
-  const weekKcal = weekSessions.reduce((a, x) => a + workoutKcal(x, s.profile.weightKg), 0);
+  const weekKcal = weekSessions.reduce((a, x) => a + workoutKcal(x, s.profile.weightKg, s.gym.sessions), 0);
   const weekReps = weekSessions.reduce((a, x) => a + sessionReps(x), 0);
   const sets = muscleSets(s.gym.sessions, wk, today);
   const recent = [...s.gym.sessions].sort((a, b) => b.start - a.start).slice(0, 3);
@@ -212,7 +213,10 @@ async function openLibrary(mode = 'browse') {
 
   const drawList = () => {
     const box = sheet.body.querySelector('#ex-res');
-    const res = searchExercises(st.q, st.group);
+    const all = searchExercises(st.q, st.group, Infinity);
+    const res = all.slice(0, 60);
+    const count = sheet.body.querySelector('#ex-count');
+    if (count) count.textContent = st.q.trim() ? `${all.length} found` : `${all.length} exercises`;
     const custom = st.q.trim() && mode === 'add' && !findByName(st.q.trim())
       ? `<button class="item pressable" style="text-align:left" data-custom><span class="emoji">✍️</span><span class="grow"><span class="title">Add “${esc(st.q.trim())}”</span><span class="meta">Your own exercise (kg × reps)</span></span></button>` : '';
     // in add mode a tap on the row adds it; the moving thumbnail opens the how-to
@@ -239,9 +243,16 @@ async function openLibrary(mode = 'browse') {
         ${mode === 'add' ? '<button class="btn block" data-addex>Add to workout</button>' : ''}`);
       return;
     }
-    sheet.setBody(`<input class="input" id="ex-q" placeholder="Search 873 exercises…" value="${esc(st.q)}" autocomplete="off" style="margin-bottom:10px">
-      <div class="chips" style="margin-bottom:10px"><button class="chip ${!st.group ? 'on' : ''}" data-group="">All</button>
-        ${GROUPS.map((g) => `<button class="chip ${st.group === g.id ? 'on' : ''}" data-group="${g.id}">${g.emoji} ${g.id}</button>`).join('')}</div>
+    const inGroup = searchExercises('', st.group, Infinity).length;
+    sheet.setBody(`<div class="sticky-search">
+        <div class="search-box">
+          <input class="input" id="ex-q" type="search" enterkeyhint="search" autocomplete="off" value="${esc(st.q)}"
+            placeholder="Search ${inGroup} ${st.group ? `${esc(st.group)} ` : ''}exercises…">
+          ${st.q ? '<button class="clear" data-clear aria-label="Clear search">✕</button>' : ''}</div>
+        <div class="chips" style="margin:10px 0 4px"><button class="chip ${!st.group ? 'on' : ''}" data-group="">All</button>
+          ${GROUPS.map((g) => `<button class="chip ${st.group === g.id ? 'on' : ''}" data-group="${g.id}">${g.emoji} ${g.id}</button>`).join('')}</div>
+        <div class="muted small" id="ex-count" style="margin:0 4px 6px"></div>
+      </div>
       <div class="list" id="ex-res"></div>`);
     drawList();
   };
@@ -252,11 +263,24 @@ async function openLibrary(mode = 'browse') {
     sheet.close();
   };
 
-  sheet.body.addEventListener('input', (e) => { if (e.target.id === 'ex-q') { st.q = e.target.value; drawList(); } });
+  sheet.body.addEventListener('input', (e) => {
+    if (e.target.id !== 'ex-q') return;
+    st.q = e.target.value;
+    const box = e.target.parentNode;
+    if (st.q && !box.querySelector('[data-clear]')) box.insertAdjacentHTML('beforeend', '<button class="clear" data-clear aria-label="Clear search">✕</button>');
+    if (!st.q) box.querySelector('[data-clear]')?.remove();
+    drawList();
+  });
   sheet.body.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     if ('group' in b.dataset) { st.group = b.dataset.group || null; draw(); return; }
+    if ('clear' in b.dataset) {
+      st.q = '';
+      draw();
+      sheet.body.querySelector('#ex-q')?.focus();
+      return;
+    }
     if (b.dataset.ex && mode === 'add') { add(b.dataset.ex); return; }
     if (b.dataset.ex || b.dataset.info) {
       st.detail = b.dataset.ex || b.dataset.info;
@@ -325,6 +349,61 @@ function openProgress() {
   });
 }
 
+// Where the calories came from, per exercise, with the method in plain words
+function burnHtml(burn, weightKg) {
+  if (!weightKg) return '<p class="hint">Add your weight in Diet → Edit goal to see calories burned.</p>';
+  const rows = [...burn.byExercise].sort((a, b) => b.kcal - a.kcal);
+  return `${rows.length ? `<details class="card tight"><summary style="font-weight:700">🔥 Calories by exercise</summary>
+      ${rows.map((r) => `<div class="row between small" style="margin-top:6px"><span>${esc(r.name)}</span><b>${r.kcal} kcal</b></div>`).join('')}
+      ${burn.skipped.length ? `<div class="muted small" style="margin-top:8px">Not counted: ${esc(burn.skipped.join(', '))}. Cardio calories come from your phone's activity data.</div>` : ''}
+    </details>` : ''}
+    <p class="hint">Worked out per set: your workout time is shared across the sets, and each set uses the Compendium of Physical Activities value for that kind of exercise. Sets at ${Math.round(HARD_SHARE * 100)}% or more of your best on that exercise count as hard (vigorous). An estimate, not a lab measurement.</p>`;
+}
+
+// Asks how long the workout really was. Resolves to minutes, or null if cancelled.
+function askDuration({ title, minutes, hint, confirm }) {
+  return new Promise((resolve) => {
+    let mins = minutes;
+    let answered = false;
+    const chips = [30, 45, 60, 75, 90, 105, 120, 150];
+    const label = (m) => formatDuration(m * 60);
+    const sheet = openSheet({
+      title,
+      html: `<div class="center big-num" id="dur-show" style="margin:4px 0 14px">${label(mins)}</div>
+        <div class="chips wrap" style="justify-content:center;margin-bottom:14px">${chips.map((c) =>
+          `<button class="chip ${c === mins ? 'on' : ''}" data-min="${c}">${label(c)}</button>`).join('')}</div>
+        <div class="row" style="gap:10px">
+          <label class="field" style="flex:1"><span>Hours</span><input class="input" id="dur-h" inputmode="numeric" value="${Math.floor(mins / 60)}"></label>
+          <label class="field" style="flex:1"><span>Minutes</span><input class="input" id="dur-m" inputmode="numeric" value="${mins % 60}"></label></div>
+        ${hint ? `<p class="hint" style="margin:0 0 14px">${esc(hint)}</p>` : ''}
+        <button class="btn block" data-ok>${esc(confirm)}</button>`,
+      onClose: () => { if (!answered) resolve(null); },
+    });
+    const h = sheet.body.querySelector('#dur-h');
+    const m = sheet.body.querySelector('#dur-m');
+    const show = () => {
+      sheet.body.querySelector('#dur-show').textContent = mins ? label(mins) : '—';
+      sheet.body.querySelectorAll('[data-min]').forEach((c) => c.classList.toggle('on', Number(c.dataset.min) === mins));
+    };
+    sheet.body.addEventListener('input', () => { mins = parseDurationMinutes(h.value, m.value); show(); });
+    sheet.body.addEventListener('click', (e) => {
+      const c = e.target.closest('[data-min]');
+      if (c) {
+        mins = Number(c.dataset.min);
+        h.value = Math.floor(mins / 60);
+        m.value = mins % 60;
+        show();
+        return;
+      }
+      if (!e.target.closest('[data-ok]')) return;
+      if (!mins) { toast(`Please enter a time between 1 minute and ${MAX_WORKOUT_MIN / 60} hours`); return; }
+      answered = true;
+      resolve(mins);
+      sheet.close();
+    });
+  });
+}
+
 async function finishWorkout() {
   const s = getState();
   const a = s.gym.active;
@@ -333,12 +412,21 @@ async function finishWorkout() {
     if (ok) update((st) => { st.gym.active = null; });
     return;
   }
-  const session = {
+  const timerMin = Math.min(MAX_WORKOUT_MIN, Math.max(1, Math.round((Date.now() - a.start) / 60000)));
+  const minutes = await askDuration({
+    title: 'How long did you train?',
+    minutes: timerMin,
+    hint: `The timer ran for ${formatDuration(timerMin * 60)} while you were logging. Change it if your session was longer or shorter.`,
+    confirm: 'Save workout',
+  });
+  if (minutes == null) return; // closed without saving: back to the workout, nothing lost
+  const session = withDuration({
     ...a, end: Date.now(),
     exercises: a.exercises.map((e) => ({ ...e, sets: e.sets.filter((x) => x.done).map(({ pr: _pr, ...x }) => x) })).filter((e) => e.sets.length),
-  };
+  }, minutes);
   const prs = newPrsInSession(s.gym.sessions, session);
-  const kcal = workoutKcal(session, s.profile.weightKg);
+  const burn = workoutKcalDetail(session, s.profile.weightKg, s.gym.sessions);
+  const kcal = burn.total;
   update((st) => { st.gym.sessions.push(session); st.gym.active = null; });
   cancelTimer('rest');
   rest.endAt = 0;
@@ -353,7 +441,7 @@ async function finishWorkout() {
         <div><b>${kcal ? `~${kcal}` : '—'}</b><span>kcal</span></div></div>
       ${prs.length ? `<div class="card"><h2>🏆 New personal records</h2>${prs.map((p) => `<div class="row between" style="margin-top:6px"><span>${esc(p.name)}</span><b>${prLabel(p)}</b></div>`).join('')}</div>`
         : '<p class="center muted">Solid session. Consistency wins. 💪</p>'}
-      <p class="hint">${kcal ? `Calories estimated at ${GYM_MET} METs (Compendium of Physical Activities, resistance training 8-15 reps).` : 'Add your weight in Diet → goal to see calories burned.'}</p>`,
+      ${burnHtml(burn, s.profile.weightKg)}`,
   });
 }
 
@@ -361,16 +449,32 @@ function openSession(id) {
   const x = getState().gym.sessions.find((ss) => ss.id === id);
   if (!x) return;
   const fmtSet = (e, p) => (e.type === 'time' ? `${p.sec ?? 0}s` : e.type === 'reps' ? `${p.reps ?? 0} reps` : `${p.kg ?? 0} kg × ${p.reps ?? 0}`);
+  const s0 = getState();
+  const burn = workoutKcalDetail(x, s0.profile.weightKg, s0.gym.sessions);
   const sheet = openSheet({
     title: `${x.name} · ${fmtDay(x.date)}`,
-    html: `<div class="kv" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+    html: `<div class="kv" style="margin-bottom:14px">
         <div><b>${formatDuration((x.end - x.start) / 1000)}</b><span>time</span></div>
         <div><b>${sessionSetCount(x)}</b><span>sets</span></div>
-        <div><b>${formatNum(sessionReps(x))}</b><span>reps</span></div></div>
+        <div><b>${formatNum(sessionReps(x))}</b><span>reps</span></div>
+        <div><b>${burn.total ? `~${burn.total}` : '—'}</b><span>kcal</span></div></div>
+      ${burnHtml(burn, s0.profile.weightKg)}
       ${x.exercises.map((e) => `<div class="card tight"><b>${esc(e.name)}</b>
         <div class="muted small">${e.sets.map((p) => fmtSet(e, p)).join(' · ')}</div></div>`).join('')}
-      <button class="btn danger block" data-del>Delete this workout</button>`,
+      <div class="row" style="gap:8px">
+        <button class="btn plain" style="flex:1" data-dur>⏱️ Edit duration</button>
+        <button class="btn danger" style="flex:1" data-del>Delete</button></div>`,
   });
+  sheet.body.querySelector('[data-dur]').onclick = async () => {
+    const minutes = await askDuration({ title: 'Workout duration', minutes: sessionMinutes(x), confirm: 'Save' });
+    if (minutes == null) return;
+    update((s) => {
+      const i = s.gym.sessions.findIndex((ss) => ss.id === id);
+      s.gym.sessions[i] = withDuration(s.gym.sessions[i], minutes);
+    });
+    sheet.close();
+    toast(`Duration set to ${formatDuration(minutes * 60)}`);
+  };
   sheet.body.querySelector('[data-del]').onclick = async () => {
     if (!(await confirmSheet({ title: 'Delete workout?', message: 'This removes the workout and its sets from your history.' }))) return;
     update((s) => { s.gym.sessions = s.gym.sessions.filter((ss) => ss.id !== id); });

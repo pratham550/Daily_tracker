@@ -187,13 +187,87 @@ export function muscleSets(sessions, from, to) {
   return out;
 }
 
-// Calories for a gym session with the Compendium of Physical Activities value for
-// code 02054, resistance training with multiple exercises at 8-15 reps: 3.5 METs.
-export const GYM_MET = 3.5;
-export function workoutKcal(session, weightKg) {
-  if (!weightKg || !session.end) return 0;
-  const hours = Math.min(3, Math.max(0, (session.end - session.start) / 3600000));
-  return Math.round(GYM_MET * weightKg * hours);
+// ---------- gym calories ----------
+// MET values from the Compendium of Physical Activities (pacompendium.com, conditioning exercise).
+export const METS = {
+  lift: 3.5, // 02054 resistance training, multiple exercises, 8-15 reps at varied resistance
+  liftHard: 6.0, // 02050 weight lifting, power lifting or body building, vigorous effort
+  squatDeadlift: 5.0, // 02052 resistance training, squats, deadlift
+  bodyweight: 3.8, // 02022 calisthenics (pushups, sit ups, pull-ups, lunges), moderate effort
+  bodyweightHard: 7.5, // 02020 calisthenics, vigorous effort
+  core: 2.8, // 02024 calisthenics (curl ups, abdominal crunches, plank), light effort
+  stretch: 2.3, // 02101 stretching, mild
+};
+
+// A set counts as hard when it reaches this share of your best on that exercise. This cut-off
+// is the app's own choice; the Compendium only separates effort levels, not loads.
+export const HARD_SHARE = 0.85;
+
+const SQUAT_DEADLIFT = /squat|deadlift/i;
+
+export function setMet(ex, set, best) {
+  const type = typeOf(ex);
+  if (ex.group === 'Stretch') return METS.stretch;
+  if (ex.group === 'Abs' && type !== 'weight') return METS.core;
+  const hard = best > 0 && setScore(type, set) >= HARD_SHARE * best;
+  if (type === 'weight') {
+    if (SQUAT_DEADLIFT.test(ex.name)) return hard ? METS.liftHard : METS.squatDeadlift;
+    return hard ? METS.liftHard : METS.lift;
+  }
+  return hard ? METS.bodyweightHard : METS.bodyweight;
+}
+
+// Calories per exercise for one session. The real workout time is shared equally across the
+// done sets (each set plus its rest), and each set is charged at the MET for its exercise
+// and effort. Cardio machines are left out: their Compendium values depend on speed, which
+// the app does not record, and the phone's active calories already cover them.
+export function workoutKcalDetail(session, weightKg, history = []) {
+  const empty = { total: 0, byExercise: [], skipped: [] };
+  if (!weightKg || !session.end) return empty;
+  const before = personalRecords(history.filter((h) => h.id !== session.id));
+  const sets = [];
+  const skipped = [];
+  for (const ex of session.exercises) {
+    const done = ex.sets.filter((x) => x.done);
+    if (!done.length) continue;
+    if (ex.group === 'Cardio') { skipped.push(ex.name); continue; }
+    const type = typeOf(ex);
+    const best = Math.max(before[ex.name.toLowerCase()]?.score || 0, ...done.map((x) => setScore(type, x)));
+    for (const x of done) sets.push({ name: ex.name, met: setMet(ex, x, best) });
+  }
+  if (!sets.length) return { ...empty, skipped };
+  const hours = Math.min(MAX_WORKOUT_MIN, Math.max(0, (session.end - session.start) / 60000)) / 60;
+  const perSet = hours / sets.length;
+  const byName = new Map();
+  for (const st of sets) byName.set(st.name, (byName.get(st.name) || 0) + st.met * weightKg * perSet);
+  const byExercise = [...byName].map(([name, kcal]) => ({ name, kcal: Math.round(kcal) }));
+  const total = Math.round([...byName.values()].reduce((a, b) => a + b, 0));
+  return { total, byExercise, skipped };
+}
+
+export function workoutKcal(session, weightKg, history = []) {
+  return workoutKcalDetail(session, weightKg, history).total;
+}
+
+// Workout length the user enters, in minutes. The live timer only measures how long the
+// logging screen was open, which is often much shorter than the real session.
+export const MAX_WORKOUT_MIN = 360;
+
+export function parseDurationMinutes(hours, minutes) {
+  const h = hours === '' || hours == null ? 0 : Number(hours);
+  const m = minutes === '' || minutes == null ? 0 : Number(minutes);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || m < 0) return null;
+  const total = Math.round(h * 60 + m);
+  return total >= 1 && total <= MAX_WORKOUT_MIN ? total : null;
+}
+
+export function sessionMinutes(session) {
+  return Math.max(1, Math.round((session.end - session.start) / 60000));
+}
+
+// Keeps the end time and moves the start so the session lasts `minutes`
+export function withDuration(session, minutes) {
+  return { ...session, start: session.end - minutes * 60000 };
 }
 
 // The last time an exercise was done, used to pre-fill sets in a new workout

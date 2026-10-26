@@ -41,7 +41,7 @@ export function render(s) {
   const entries = dayEntries(s.diet.log, k);
   const eaten = sumNutrition(entries);
   const burned = Math.round((s.steps.calories[k] || 0)
-    + s.gym.sessions.filter((x) => x.date === k).reduce((a, x) => a + workoutKcal(x, s.profile.weightKg), 0));
+    + s.gym.sessions.filter((x) => x.date === k).reduce((a, x) => a + workoutKcal(x, s.profile.weightKg, s.gym.sessions), 0));
 
   const header = `<header class="top"><div class="grow"><h1>Diet 🥗</h1><div class="sub">Pure veg · ${esc(fmtDay(k))}</div></div>
     <button class="icon-btn" data-act="prevDay" aria-label="Previous day">${icon('left')}</button>

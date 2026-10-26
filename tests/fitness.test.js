@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   setScore, personalRecords, newPrsInSession, isSetPr, sessionReps, sessionVolume, muscleSets, workoutKcal,
-  smokeByDay, smokeWeekAvg, smokeLimitFor, lastNDays,
+  workoutKcalDetail, setMet, METS,
+  smokeByDay, smokeWeekAvg, smokeLimitFor, lastNDays, parseDurationMinutes, sessionMinutes, withDuration,
 } from '../src/lib/stats.js';
 import { addDays, keyToDate } from '../src/lib/dates.js';
 import { defaultState } from '../src/store.js';
@@ -76,10 +77,9 @@ describe('PRs by exercise type', () => {
     const out = muscleSets([day1, { ...day1, date: '2026-09-20' }], '2026-09-28', '2026-10-04');
     expect(out).toEqual({ Back: 2, Abs: 1, Legs: 1 });
   });
-  it('workout calories use 3.5 METs x kg x hours', () => {
-    expect(workoutKcal(day1, 70)).toBe(245); // 3.5 x 70 x 1 h
-    expect(workoutKcal({ start: 0, end: 10 * 3600000 }, 70)).toBe(735); // capped at 3 h
+  it('calories need body weight and a finished session', () => {
     expect(workoutKcal(day1, null)).toBe(0);
+    expect(workoutKcal({ ...day1, end: undefined }, 70)).toBe(0);
   });
 });
 
@@ -103,5 +103,88 @@ describe('smoking tracker', () => {
     expect(smokeLimitFor(sm, '2027-12-31')).toBe(0);
     expect(smokeLimitFor({ ...sm, stepDown: false }, '2027-12-31')).toBe(10);
     expect(smokeLimitFor({ limit: null }, today)).toBe(null);
+  });
+});
+
+describe('workout duration entered by hand', () => {
+  it('parses hours and minutes, rejecting nonsense', () => {
+    expect(parseDurationMinutes('1', '30')).toBe(90);
+    expect(parseDurationMinutes('1.5', '')).toBe(90);
+    expect(parseDurationMinutes('', '45')).toBe(45);
+    expect(parseDurationMinutes('0', '0')).toBe(null);
+    expect(parseDurationMinutes('-1', '30')).toBe(null);
+    expect(parseDurationMinutes('abc', '10')).toBe(null);
+    expect(parseDurationMinutes('7', '0')).toBe(null); // over 6 hours
+    expect(parseDurationMinutes('6', '0')).toBe(360);
+  });
+
+  it('8 minutes of logging becomes the real 1.5 hour session, and calories follow', () => {
+    const end = Date.parse('2026-10-26T19:30:00');
+    const logged = { date: '2026-10-26', start: end - 8 * 60000, end, exercises: [] };
+    expect(sessionMinutes(logged)).toBe(8);
+    const fixed = withDuration(logged, 90);
+    expect(fixed.end).toBe(end);
+    expect(sessionMinutes(fixed)).toBe(90);
+    // no sets in this session, so nothing to charge
+    expect(workoutKcal(fixed, 70)).toBe(0);
+  });
+});
+
+describe('calories per exercise, weight and reps', () => {
+  const ex = (name, type, group, sets) => ({ name, type, group, sets: sets.map((s) => ({ done: true, ...s })) });
+  const hour = 3600000;
+
+  it('picks the Compendium value for the exercise and effort', () => {
+    const squat = { name: 'Barbell Squat', type: 'weight', group: 'Legs' };
+    const curl = { name: 'Barbell Curl', type: 'weight', group: 'Biceps' };
+    const pull = { name: 'Pullups', type: 'reps', group: 'Back' };
+    const plank = { name: 'Plank', type: 'time', group: 'Abs' };
+    // best e1rm 116.7 (100 x 5): 100 x 5 is hard, 60 x 10 (e1rm 80, 69%) is a warm-up
+    expect(setMet(squat, { kg: 100, reps: 5 }, 116.7)).toBe(METS.liftHard);
+    expect(setMet(squat, { kg: 60, reps: 10 }, 116.7)).toBe(METS.squatDeadlift);
+    expect(setMet(curl, { kg: 10, reps: 10 }, 40)).toBe(METS.lift);
+    expect(setMet(pull, { reps: 10 }, 10)).toBe(METS.bodyweightHard);
+    expect(setMet(pull, { reps: 8 }, 10)).toBe(METS.bodyweight); // 80% of best
+    expect(setMet(plank, { sec: 60 }, 60)).toBe(METS.core);
+  });
+
+  it('a heavy session burns more than a light one of the same length', () => {
+    const session = (sets) => ({ id: 'x', start: 0, end: hour, exercises: [ex('Barbell Squat', 'weight', 'Legs', sets)] });
+    const history = [{ id: 'old', date: '2026-10-01', exercises: [ex('Barbell Squat', 'weight', 'Legs', [{ kg: 100, reps: 5 }])] }];
+    const heavy = workoutKcal(session([{ kg: 100, reps: 5 }, { kg: 100, reps: 5 }]), 70, history);
+    const light = workoutKcal(session([{ kg: 40, reps: 5 }, { kg: 40, reps: 5 }]), 70, history);
+    expect(heavy).toBe(420); // 6.0 x 70 kg x 1 h
+    expect(light).toBe(350); // 5.0 x 70 kg x 1 h
+    expect(heavy).toBeGreaterThan(light);
+  });
+
+  it('worked example: 6 sets in 60 minutes, broken down by exercise', () => {
+    const s = {
+      id: 'w', start: 0, end: hour,
+      exercises: [
+        ex('Barbell Squat', 'weight', 'Legs', [{ kg: 100, reps: 5 }, { kg: 100, reps: 5 }, { kg: 60, reps: 10 }]),
+        ex('Pullups', 'reps', 'Back', [{ reps: 10 }, { reps: 8 }]),
+        ex('Plank', 'time', 'Abs', [{ sec: 60 }]),
+      ],
+    };
+    // 10 minutes per set, 70 kg: squat 6.0 + 6.0 + 5.0, pull-ups 7.5 + 3.8, plank 2.8
+    const d = workoutKcalDetail(s, 70, []);
+    const perSet = 70 / 6;
+    expect(d.byExercise).toEqual([
+      { name: 'Barbell Squat', kcal: Math.round(17 * perSet) },
+      { name: 'Pullups', kcal: Math.round(11.3 * perSet) },
+      { name: 'Plank', kcal: Math.round(2.8 * perSet) },
+    ]);
+    expect(d.total).toBe(Math.round(31.1 * perSet)); // 363
+  });
+
+  it('leaves cardio machines out and gives their time back to nothing else', () => {
+    const s = { id: 'c', start: 0, end: hour, exercises: [ex('Treadmill', 'time', 'Cardio', [{ sec: 1200 }])] };
+    expect(workoutKcalDetail(s, 70, [])).toEqual({ total: 0, byExercise: [], skipped: ['Treadmill'] });
+  });
+
+  it('undone sets are ignored', () => {
+    const s = { id: 'u', start: 0, end: hour, exercises: [{ name: 'Barbell Curl', type: 'weight', group: 'Biceps', sets: [{ kg: 20, reps: 10, done: false }] }] };
+    expect(workoutKcal(s, 70, [])).toBe(0);
   });
 });

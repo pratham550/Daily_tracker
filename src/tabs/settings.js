@@ -90,8 +90,9 @@ function body(s, exact) {
 
   <div class="section-title">Backup</div>
   <div class="card">
-    <p class="muted small" style="margin-top:0">All your data stays on this phone. Save a backup to Google Drive or WhatsApp now and then, so a lost phone does not mean lost data.
-      ${s.settings.lastBackupAt ? `<br>Last backup: <b>${fmtDay(dateKey(new Date(s.settings.lastBackupAt)))}</b>` : '<br><b>No backup yet.</b>'}</p>
+    ${isNative() ? row('🗂️ Daily auto backup', `Saved to Documents/DailyHub on this phone (last 7 kept). These files stay even if you uninstall the app.${s.settings.lastAutoBackupDay ? ` Last: ${fmtDay(s.settings.lastAutoBackupDay)}.` : ''}`, toggle('settings.autoBackup', s.settings.autoBackup)) : ''}
+    <p class="muted small" style="margin:12px 0">To be safe even if the phone is lost, also save a backup to Google Drive now and then.
+      ${s.settings.lastBackupAt ? `<br>Last saved backup: <b>${fmtDay(dateKey(new Date(s.settings.lastBackupAt)))}</b>` : '<br><b>No backup saved yet.</b>'}</p>
     <div class="row" style="gap:8px">
       <button class="btn" style="flex:1" data-export>⬆️ Save backup</button>
       <label class="btn plain" style="flex:1">⬇️ Restore<input type="file" accept="application/json,.json" data-import hidden></label></div>
@@ -99,7 +100,7 @@ function body(s, exact) {
 
   <div class="section-title">About</div>
   <div class="card small muted">
-    <b style="color:var(--text)">Daily Hub 1.0</b><br>
+    <b style="color:var(--text)">Daily Hub 1.1</b><br>
     Food data: Indian Food Composition Tables 2017, NIN Hyderabad.<br>
     Exercises: free-exercise-db (public domain).<br>
     Weather: Open-Meteo. Steps: Health Connect (read only).<br>
@@ -122,7 +123,7 @@ export async function openSettings(ctx) {
 
   sheet.body.addEventListener('change', async (e) => {
     const el = e.target;
-    if (el.matches('[data-import]')) { restore(el.files[0]); el.value = ''; return; }
+    if (el.matches('[data-import]')) { restoreFromFile(el.files[0]); el.value = ''; return; }
     const path = el.dataset.path;
     if (!path) return;
     let value = el.type === 'checkbox' ? el.checked : el.value;
@@ -202,14 +203,14 @@ async function exportBackup() {
   }
 }
 
-async function restore(file) {
-  if (!file) return;
+export async function restoreFromFile(file) {
+  if (!file) return false;
   let parsed;
   try {
     parsed = parseBackup(await file.text());
   } catch (err) {
     toast(err.message, { ms: 5000 });
-    return;
+    return false;
   }
   const when = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('en-IN') : 'an unknown date';
   const ok = await confirmSheet({
@@ -217,10 +218,11 @@ async function restore(file) {
     message: `This backup was saved on ${when}. Everything currently in the app will be replaced by it.`,
     confirm: 'Restore', danger: true,
   });
-  if (!ok) return;
-  replaceState(parsed.state);
+  if (!ok) return false;
+  replaceState({ ...parsed.state, setupDone: true });
   applyTheme(getState().settings);
   syncReminders(getState());
   success();
   toast('Backup restored ✅');
+  return true;
 }
