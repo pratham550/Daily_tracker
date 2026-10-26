@@ -3,8 +3,8 @@ import { dateKey, addDays, fmtDay, startOfWeek, monthKey, weekdayShort } from '.
 import { formatClock, formatDuration, formatNum, formatKm } from '../lib/format.js';
 import {
   sessionVolume, sessionSetCount, sessionReps, exerciseHistory, personalRecords, newPrsInSession, isSetPr,
-  gymDays, sessionsThisWeek, lastSetsFor, lastNDays, muscleSets, workoutKcal, prLabel, GYM_MET,
-  parseDurationMinutes, sessionMinutes, withDuration, MAX_WORKOUT_MIN,
+  gymDays, sessionsThisWeek, lastSetsFor, lastNDays, muscleSets, workoutKcal, workoutKcalDetail, prLabel,
+  parseDurationMinutes, sessionMinutes, withDuration, MAX_WORKOUT_MIN, HARD_SHARE,
 } from '../lib/stats.js';
 import { loadLibrary, searchExercises, describe, demo, findByName, stepsHtml, GROUPS, TYPE_LABEL, groupEmoji } from '../lib/exercises.js';
 import { healthStatus, connectHealth, syncSteps, openHealthSettings } from '../lib/health.js';
@@ -49,7 +49,7 @@ function renderGym(s) {
   const target = s.settings.gymWeeklyTarget;
   const wk = startOfWeek(today);
   const weekSessions = s.gym.sessions.filter((x) => x.date >= wk && x.date <= today);
-  const weekKcal = weekSessions.reduce((a, x) => a + workoutKcal(x, s.profile.weightKg), 0);
+  const weekKcal = weekSessions.reduce((a, x) => a + workoutKcal(x, s.profile.weightKg, s.gym.sessions), 0);
   const weekReps = weekSessions.reduce((a, x) => a + sessionReps(x), 0);
   const sets = muscleSets(s.gym.sessions, wk, today);
   const recent = [...s.gym.sessions].sort((a, b) => b.start - a.start).slice(0, 3);
@@ -326,6 +326,17 @@ function openProgress() {
   });
 }
 
+// Where the calories came from, per exercise, with the method in plain words
+function burnHtml(burn, weightKg) {
+  if (!weightKg) return '<p class="hint">Add your weight in Diet → Edit goal to see calories burned.</p>';
+  const rows = [...burn.byExercise].sort((a, b) => b.kcal - a.kcal);
+  return `${rows.length ? `<details class="card tight"><summary style="font-weight:700">🔥 Calories by exercise</summary>
+      ${rows.map((r) => `<div class="row between small" style="margin-top:6px"><span>${esc(r.name)}</span><b>${r.kcal} kcal</b></div>`).join('')}
+      ${burn.skipped.length ? `<div class="muted small" style="margin-top:8px">Not counted: ${esc(burn.skipped.join(', '))}. Cardio calories come from your phone's activity data.</div>` : ''}
+    </details>` : ''}
+    <p class="hint">Worked out per set: your workout time is shared across the sets, and each set uses the Compendium of Physical Activities value for that kind of exercise. Sets at ${Math.round(HARD_SHARE * 100)}% or more of your best on that exercise count as hard (vigorous). An estimate, not a lab measurement.</p>`;
+}
+
 // Asks how long the workout really was. Resolves to minutes, or null if cancelled.
 function askDuration({ title, minutes, hint, confirm }) {
   return new Promise((resolve) => {
@@ -391,7 +402,8 @@ async function finishWorkout() {
     exercises: a.exercises.map((e) => ({ ...e, sets: e.sets.filter((x) => x.done).map(({ pr: _pr, ...x }) => x) })).filter((e) => e.sets.length),
   }, minutes);
   const prs = newPrsInSession(s.gym.sessions, session);
-  const kcal = workoutKcal(session, s.profile.weightKg);
+  const burn = workoutKcalDetail(session, s.profile.weightKg, s.gym.sessions);
+  const kcal = burn.total;
   update((st) => { st.gym.sessions.push(session); st.gym.active = null; });
   cancelTimer('rest');
   rest.endAt = 0;
@@ -406,7 +418,7 @@ async function finishWorkout() {
         <div><b>${kcal ? `~${kcal}` : '—'}</b><span>kcal</span></div></div>
       ${prs.length ? `<div class="card"><h2>🏆 New personal records</h2>${prs.map((p) => `<div class="row between" style="margin-top:6px"><span>${esc(p.name)}</span><b>${prLabel(p)}</b></div>`).join('')}</div>`
         : '<p class="center muted">Solid session. Consistency wins. 💪</p>'}
-      <p class="hint">${kcal ? `Calories estimated at ${GYM_MET} METs (Compendium of Physical Activities, resistance training 8-15 reps).` : 'Add your weight in Diet → goal to see calories burned.'}</p>`,
+      ${burnHtml(burn, s.profile.weightKg)}`,
   });
 }
 
@@ -414,12 +426,16 @@ function openSession(id) {
   const x = getState().gym.sessions.find((ss) => ss.id === id);
   if (!x) return;
   const fmtSet = (e, p) => (e.type === 'time' ? `${p.sec ?? 0}s` : e.type === 'reps' ? `${p.reps ?? 0} reps` : `${p.kg ?? 0} kg × ${p.reps ?? 0}`);
+  const s0 = getState();
+  const burn = workoutKcalDetail(x, s0.profile.weightKg, s0.gym.sessions);
   const sheet = openSheet({
     title: `${x.name} · ${fmtDay(x.date)}`,
-    html: `<div class="kv" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+    html: `<div class="kv" style="margin-bottom:14px">
         <div><b>${formatDuration((x.end - x.start) / 1000)}</b><span>time</span></div>
         <div><b>${sessionSetCount(x)}</b><span>sets</span></div>
-        <div><b>${formatNum(sessionReps(x))}</b><span>reps</span></div></div>
+        <div><b>${formatNum(sessionReps(x))}</b><span>reps</span></div>
+        <div><b>${burn.total ? `~${burn.total}` : '—'}</b><span>kcal</span></div></div>
+      ${burnHtml(burn, s0.profile.weightKg)}
       ${x.exercises.map((e) => `<div class="card tight"><b>${esc(e.name)}</b>
         <div class="muted small">${e.sets.map((p) => fmtSet(e, p)).join(' · ')}</div></div>`).join('')}
       <div class="row" style="gap:8px">
