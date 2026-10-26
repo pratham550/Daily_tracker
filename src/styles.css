@@ -470,3 +470,13 @@ canvas.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 80; 
 .hscroll > * { flex: none; width: 40%; scroll-snap-align: start; margin: 0; }
 .pr-burst { background: radial-gradient(circle at center, color-mix(in oklab, var(--accent) 45%, rgb(5 6 12 / 0.7)), rgb(5 6 12 / 0.72) 70%); }
 .hscroll { scroll-padding-inline: 16px; }
+
+/* exercise search stays at the top of the sheet while the list scrolls */
+.sticky-search { position: sticky; top: -4px; z-index: 2; background: var(--bg); padding-top: 4px; }
+.search-box { position: relative; }
+.search-box .input { padding-right: 46px; }
+.search-box .clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px;
+  border-radius: 50%; background: var(--track); color: var(--text); font-size: 14px;
+}
+input[type='search']::-webkit-search-cancel-button { display: none; }

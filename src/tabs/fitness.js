@@ -213,7 +213,10 @@ async function openLibrary(mode = 'browse') {
 
   const drawList = () => {
     const box = sheet.body.querySelector('#ex-res');
-    const res = searchExercises(st.q, st.group);
+    const all = searchExercises(st.q, st.group, Infinity);
+    const res = all.slice(0, 60);
+    const count = sheet.body.querySelector('#ex-count');
+    if (count) count.textContent = st.q.trim() ? `${all.length} found` : `${all.length} exercises`;
     const custom = st.q.trim() && mode === 'add' && !findByName(st.q.trim())
       ? `<button class="item pressable" style="text-align:left" data-custom><span class="emoji">✍️</span><span class="grow"><span class="title">Add “${esc(st.q.trim())}”</span><span class="meta">Your own exercise (kg × reps)</span></span></button>` : '';
     // in add mode a tap on the row adds it; the moving thumbnail opens the how-to
@@ -240,9 +243,16 @@ async function openLibrary(mode = 'browse') {
         ${mode === 'add' ? '<button class="btn block" data-addex>Add to workout</button>' : ''}`);
       return;
     }
-    sheet.setBody(`<input class="input" id="ex-q" placeholder="Search 873 exercises…" value="${esc(st.q)}" autocomplete="off" style="margin-bottom:10px">
-      <div class="chips" style="margin-bottom:10px"><button class="chip ${!st.group ? 'on' : ''}" data-group="">All</button>
-        ${GROUPS.map((g) => `<button class="chip ${st.group === g.id ? 'on' : ''}" data-group="${g.id}">${g.emoji} ${g.id}</button>`).join('')}</div>
+    const inGroup = searchExercises('', st.group, Infinity).length;
+    sheet.setBody(`<div class="sticky-search">
+        <div class="search-box">
+          <input class="input" id="ex-q" type="search" enterkeyhint="search" autocomplete="off" value="${esc(st.q)}"
+            placeholder="Search ${inGroup} ${st.group ? `${esc(st.group)} ` : ''}exercises…">
+          ${st.q ? '<button class="clear" data-clear aria-label="Clear search">✕</button>' : ''}</div>
+        <div class="chips" style="margin:10px 0 4px"><button class="chip ${!st.group ? 'on' : ''}" data-group="">All</button>
+          ${GROUPS.map((g) => `<button class="chip ${st.group === g.id ? 'on' : ''}" data-group="${g.id}">${g.emoji} ${g.id}</button>`).join('')}</div>
+        <div class="muted small" id="ex-count" style="margin:0 4px 6px"></div>
+      </div>
       <div class="list" id="ex-res"></div>`);
     drawList();
   };
@@ -253,11 +263,24 @@ async function openLibrary(mode = 'browse') {
     sheet.close();
   };
 
-  sheet.body.addEventListener('input', (e) => { if (e.target.id === 'ex-q') { st.q = e.target.value; drawList(); } });
+  sheet.body.addEventListener('input', (e) => {
+    if (e.target.id !== 'ex-q') return;
+    st.q = e.target.value;
+    const box = e.target.parentNode;
+    if (st.q && !box.querySelector('[data-clear]')) box.insertAdjacentHTML('beforeend', '<button class="clear" data-clear aria-label="Clear search">✕</button>');
+    if (!st.q) box.querySelector('[data-clear]')?.remove();
+    drawList();
+  });
   sheet.body.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     if ('group' in b.dataset) { st.group = b.dataset.group || null; draw(); return; }
+    if ('clear' in b.dataset) {
+      st.q = '';
+      draw();
+      sheet.body.querySelector('#ex-q')?.focus();
+      return;
+    }
     if (b.dataset.ex && mode === 'add') { add(b.dataset.ex); return; }
     if (b.dataset.ex || b.dataset.info) {
       st.detail = b.dataset.ex || b.dataset.info;
