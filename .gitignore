@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+Thumbs.db
+
+# Android build output and local machine files
+android/app/build/
+android/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/release/
+*.apk
+*.aab
+*.keystore
+*.jks
