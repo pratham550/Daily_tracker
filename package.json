@@ -1,6 +1,6 @@
 {
   "name": "daily-hub",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Daily Hub - personal all-in-one dashboard for Android",
   "scripts": {
     "dev": "vite --host",

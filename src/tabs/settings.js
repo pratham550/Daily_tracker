@@ -100,7 +100,7 @@ function body(s, exact) {
 
   <div class="section-title">About</div>
   <div class="card small muted">
-    <b style="color:var(--text)">Daily Hub 1.0</b><br>
+    <b style="color:var(--text)">Daily Hub 1.1</b><br>
     Food data: Indian Food Composition Tables 2017, NIN Hyderabad.<br>
     Exercises: free-exercise-db (public domain).<br>
     Weather: Open-Meteo. Steps: Health Connect (read only).<br>
