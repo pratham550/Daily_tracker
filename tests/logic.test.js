@@ -7,6 +7,7 @@ import {
 } from '../src/lib/stats.js';
 import { makeBackup, parseBackup, backupFileName } from '../src/lib/backup.js';
 import { defaultState, migrate } from '../src/store.js';
+import { filesToPrune, autoFileName } from '../src/lib/autobackup.js';
 
 // Deterministic pseudo-random generator so generated test data is reproducible
 function rng(seed) {
@@ -193,5 +194,21 @@ describe('backup', () => {
   });
   it('file name uses YYYYMMDD', () => {
     expect(backupFileName(new Date(2026, 9, 5))).toBe('DailyHub_backup_20261005.json');
+  });
+});
+
+describe('daily auto backup', () => {
+  it('names files by day', () => {
+    expect(autoFileName('2026-10-26')).toBe('DailyHub_auto_20261026.json');
+  });
+  it('keeps the newest 7 and never touches other files', () => {
+    const days = lastNDays(10, '2026-10-26').map(autoFileName);
+    const names = [...days, 'DailyHub_backup_20261001.json', 'notes.txt'];
+    expect(filesToPrune(names)).toEqual(days.slice(0, 3).reverse());
+  });
+  it('old data restored from a backup gets the new settings with defaults', () => {
+    const s = migrate({ settings: { theme: 'ocean' } });
+    expect(s.settings.autoBackup).toBe(true);
+    expect(s.settings.theme).toBe('ocean');
   });
 });
