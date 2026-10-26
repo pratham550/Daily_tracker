@@ -1,0 +1,14 @@
+{
+  "appId": "com.pratham.dailyhub",
+  "appName": "Daily Hub",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_dailyhub",
+      "iconColor": "#6366F1"
+    }
+  }
+}
