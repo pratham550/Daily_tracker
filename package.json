@@ -1,0 +1,48 @@
+{
+  "name": "daily-hub",
+  "version": "1.0.0",
+  "description": "Daily Hub - personal all-in-one dashboard for Android",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "build:android": "vite build && npx cap sync android",
+    "build:foods": "node scripts/build-foods.mjs",
+    "build:exercises": "node scripts/build-exercises.mjs"
+  },
+  "keywords": [
+    "android",
+    "capacitor",
+    "diet",
+    "gym",
+    "habits",
+    "expense-tracker"
+  ],
+  "author": "Pratham Chudiwal",
+  "type": "module",
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/share": "^8.0.3",
+    "@capgo/capacitor-health": "^8.11.12"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  },
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pratham550/Daily_tracker.git"
+  }
+}
