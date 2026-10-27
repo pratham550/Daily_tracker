@@ -20,7 +20,8 @@ const FEATURES = [
   ['weather', '🌤️ Weather', 'Weather for your city on Home'],
 ];
 
-const toggle = (path, on) => `<span class="toggle"><input type="checkbox" data-path="${path}" ${on ? 'checked' : ''}><i></i></span>`;
+// a <label>, so tapping the switch track flips the hidden checkbox inside it
+const toggle = (path, on) => `<label class="toggle"><input type="checkbox" data-path="${path}" ${on ? 'checked' : ''}><i></i></label>`;
 const num = (path, val, suffix = '') => `<input class="input" style="width:110px;min-height:42px;text-align:center" inputmode="numeric" data-path="${path}" data-num value="${val ?? ''}">${suffix}`;
 const time = (path, val) => `<input class="input" type="time" style="width:120px;min-height:42px" data-path="${path}" value="${val}">`;
 const row = (title, sub, control) => `<div class="row" style="padding:10px 0;border-bottom:1px solid var(--border)">

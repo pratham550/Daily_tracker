@@ -21,9 +21,14 @@ export async function setupNotifications() {
 
 export async function ensurePermission() {
   if (!isNative()) return false;
-  let p = await LocalNotifications.checkPermissions();
-  if (p.display !== 'granted') p = await LocalNotifications.requestPermissions();
-  return p.display === 'granted';
+  try {
+    let p = await LocalNotifications.checkPermissions();
+    if (p.display !== 'granted') p = await LocalNotifications.requestPermissions();
+    return p.display === 'granted';
+  } catch (err) {
+    console.error('[reminders] permission', err);
+    return false;
+  }
 }
 
 export async function exactAlarmStatus() {
